@@ -1,0 +1,141 @@
+---
+title: "Practicle Machine Learning - Course Project"
+author: "Revital"
+date: "Friday, June 12, 2015"
+output:
+  html_document: default
+---
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, my goal was to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The data was used to create a prediction model that will predict the way they preformed the barbell lifts. More information on the data is available from the website here <http://groupware.les.inf.puc-rio.br/har>  
+
+``` {r setting_options,echo=FALSE}
+        knitr::opts_chunk$set(
+                      warning=FALSE, message=FALSE)
+```
+
+## Reading and Cleaning the data
+
+```{r data, cache=TRUE}
+        library(caret)
+        trn<- read.csv("pml-training.csv")
+        tst<- read.csv("pml-testing.csv")
+        dim(trn)
+        dim(tst)
+```
+
+The training dataset contains 19622 observation with 160 variables and the testing data consist of 20 observations, with the same variables' number.
+
+After reading the data, it is important to clean the irrelevant variables. Reviewing the variables names -
+
+```{r datanames, cache=TRUE}
+        names(trn)
+```
+
+1. Manually reviewing the data reveals that the first 7 variables are id variables of the participants and time stamps. Those variables will be removed.
+2. From the remaining variables, I have removed both - 
+
+- Variables that are near zero (predictors that have one unique value (i.e. are zero variance predictors) or predictors that have very few unique values relative to the number of samples and the ratio of the frequency of the most common value to the frequency of the second most common value is large.) 
+- Variables that are mostly NA (NA frequency > 95%)
+
+```{r data_cleaning, cache=TRUE}
+        # removing id variables
+        training1<-trn[,-c(1:7)]
+
+        #removing near zero variables  
+        training1<-training1[,-nearZeroVar(training1)]
+        nas<- function(x) {
+                sum(is.na(x))/nrow(training1)<0.95 
+        }
+        toKeep <-sapply(training1, nas)
+        ftrn<-training1[,toKeep]
+        dim(ftrn)
+```
+
+The new training dataset contains now only 53 variables, and it is ready for evaluation.
+
+## Spliting the training data to train and validation sets
+
+```{r spliting, cache=TRUE}
+        set.seed(12323)
+        inTrain <- createDataPartition(y=ftrn$classe,
+                                       p=0.7, list=FALSE)
+        
+        ftrn_t <- ftrn[inTrain,]
+        ftrn_v <- ftrn[-inTrain,]
+```
+
+## Model testing
+
+The most commonly used models are boosting and random forest, both will be tested here.
+
+For both methods I used *cross validation* with K-fold of *5*, to evoid over fitting.
+
+### Testing model 1 - gradient boosted model with cross validation 5 fold
+
+``` {r gbm, cache=TRUE} 
+Fit_gbm <- train(classe ~ ., data = ftrn_t,
+                 method = "gbm",
+                 trControl = trainControl(method = "cv", 5),
+                 verbose = FALSE)
+Fit_gbm
+```
+
+As can be seen in the model results, and in the below figure, the most accurate gbm model was generated using n.trees=150 and interaction.depth=3, and yield **0.959** accuracy.
+
+``` {r gbm_plot, cache=TRUE} 
+        plot(Fit_gbm)
+```
+
+### Testing model 2 - random forest with cross validation 5 fold
+
+``` {r rf, cache=TRUE}
+        Fit_rf <- train(classe ~ ., data = ftrn_t,
+                 method = "rf",
+                 trControl = trainControl(method = "cv", 5)
+                 )
+        Fit_rf
+```
+
+As can be seen in the model results, and in the below figure, the most accurate rf model was generated using mtry=2, and yield **0.991** accuracy.
+
+``` {r rf_plot, cache=TRUE} 
+        plot(Fit_rf)
+```
+
+
+**RANDOM FOREST** seems to do better, yeilds more accuracy, hence it was chosen as the final model.
+
+
+## Checking OOB error
+``` {r rf_model, cache=TRUE} 
+        Fit_rf$finalModel
+```
+
+The final random forest model yields **0.63%** out-og-bag estimated error rate.
+
+
+## Applying model on the validation set
+
+The random forest model was used to predict the classe on the validation set and resulted in the following confussion matrix:
+
+``` {r rf_predict, cache=TRUE} 
+        predict_rf <- predict(Fit_rf, ftrn_v)
+        confusionMatrix(ftrn_v$classe, predict_rf)
+```
+
+Accuracy of the validation set is **0.9944**.
+
+The high accuracy on the validation set approves the model, and it can be use on the testing set for prediction.
+
+# Applying final model on the testing set
+
+``` {r rf_predict_tst, cache=TRUE} 
+        predict(Fit_rf, tst)
+```
+
+******
+
+
+
